@@ -43,97 +43,53 @@
             text-align: center;
         }
 
-        #main-app {
-            display: none;
-        }
-        .app-container {
-            display: grid;
-            grid-template-columns: 240px 1fr;
-        }
+        #main-app { display: none; }
+        .app-container { display: grid; grid-template-columns: 240px 1fr; }
 
         .mobile-top-bar {
-            display: none;
-            background: #ffffff;
-            padding: 12px 20px;
+            display: none; background: #ffffff; padding: 12px 20px;
             border-bottom: 1px solid rgba(2, 132, 199, 0.1);
             box-shadow: 0 4px 15px rgba(148, 163, 184, 0.05);
-            position: sticky;
-            top: 0;
-            z-index: 1010;
-            align-items: center;
-            justify-content: space-between;
+            position: sticky; top: 0; z-index: 1010;
+            align-items: center; justify-content: space-between;
         }
 
         .sidebar {
-            background: #ffffff;
-            border-right: 1px solid rgba(2, 132, 199, 0.1);
-            box-shadow: 4px 0 20px rgba(148, 163, 184, 0.08);
-            height: 100vh;
-            position: sticky;
-            top: 0;
-            padding: 30px 15px;
-            display: flex;
-            flex-direction: column;
+            background: #ffffff; border-right: 1px solid rgba(2, 132, 199, 0.1);
+            box-shadow: 4px 0 20px rgba(148, 163, 184, 0.08); height: 100vh;
+            position: sticky; top: 0; padding: 30px 15px; display: flex; flex-direction: column;
         }
 
         .nav-link-custom {
-            display: flex;
-            align-items: center;
-            padding: 14px 20px;
-            color: #64748b;
-            border-radius: 12px;
-            margin-bottom: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.2s ease;
-            cursor: pointer;
+            display: flex; align-items: center; padding: 14px 20px; color: #64748b;
+            border-radius: 12px; margin-bottom: 8px; text-decoration: none;
+            font-weight: 600; transition: all 0.2s ease; cursor: pointer;
         }
 
         .nav-link-custom:hover, .nav-link-custom.active {
-            background: var(--primary-light);
-            color: var(--primary-blue);
+            background: var(--primary-light); color: var(--primary-blue);
         }
 
         .nav-link-custom i { margin-right: 12px; font-size: 18px; }
         .main-content { padding: 40px 20px; }
 
         .dashboard-card { 
-            background: var(--card-bg); 
-            padding: 35px; 
-            border-radius: 24px; 
+            background: var(--card-bg); padding: 35px; border-radius: 24px; 
             border: 1px solid rgba(255, 255, 255, 0.6);
-            box-shadow: 0 10px 30px rgba(148, 163, 184, 0.12); 
-            max-width: 500px;
-            margin: 0 auto;
+            box-shadow: 0 10px 30px rgba(148, 163, 184, 0.12); max-width: 500px; margin: 0 auto;
         }
 
         .gamepad-container {
-            position: relative;
-            width: 260px;
-            height: 260px;
-            background: #e2e8f0;
-            border-radius: 50%;
-            box-shadow: inset 0 8px 15px rgba(0,0,0,0.06), 0 10px 25px rgba(148, 163, 184, 0.3);
-            border: 8px solid #ffffff;
-            margin: 20px auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            position: relative; width: 260px; height: 260px; background: #e2e8f0;
+            border-radius: 50%; box-shadow: inset 0 8px 15px rgba(0,0,0,0.06), 0 10px 25px rgba(148, 163, 184, 0.3);
+            border: 8px solid #ffffff; margin: 20px auto; display: flex; align-items: center; justify-content: center;
         }
 
         .dpad-btn {
-            position: absolute;
-            background: #ffffff;
-            border: 1px solid rgba(2, 132, 199, 0.1);
-            color: var(--primary-blue);
-            font-size: 24px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s ease;
-            z-index: 1;
+            position: absolute; background: #ffffff; border: 1px solid rgba(2, 132, 199, 0.1);
+            color: var(--primary-blue); font-size: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s ease; z-index: 1;
         }
 
         .dpad-up { top: 12px; width: 75px; height: 65px; border-radius: 14px 14px 0 0; padding-bottom: 5px; }
@@ -302,7 +258,8 @@
 </div>
 
 <script>
-    const broker = "broker.hivemq.com";
+    // FIX: Menggunakan EMQX Broker yang 100% kompatibel SSL WSS Vercel
+    const broker = "broker.emqx.io";
     const port = 443; 
     let deviceId = ""; 
     
@@ -311,7 +268,7 @@
     let topic_sistem = "";
 
     const clientId = "web_yusuf_" + Math.floor(Math.random() * 100000);
-    // Mengunci endpoint WebSocket aman ke HiveMQ Cloud di port SSL 443
+    // Jalur path WSS EMQX default adalah "/mqtt"
     const mqtt = new Paho.MQTT.Client(broker, Number(port), "/mqtt", clientId);
 
     function prosesLogin() {
@@ -337,21 +294,21 @@
 
     function sambungkanMQTT() {
         const opsiKoneksi = {
-            useSSL: true,              // Wajib TRUE agar diijinkan berjalan oleh browser di hosting HTTPS (Vercel)
+            useSSL: true,              // Wajib TRUE karena Vercel menggunakan HTTPS
             timeout: 5,           
             keepAliveInterval: 60,
             cleanSession: true,
-            mqttVersion: 4,            // Mengunci versi MQTT 3.1.1 untuk kompatibilitas WebSockets HiveMQ
+            mqttVersion: 4,            // Mengunci protokol MQTT 3.1.1 untuk WebSockets
             onSuccess: () => {
                 updateStatusBadge(true);
                 mqtt.subscribe(topic_sampah); 
-                console.log("Koneksi Lolos! Terhubung.");
+                console.log("Koneksi Lolos! Sukses Terhubung ke EMQX via WSS.");
             },
             onFailure: (err) => {
                 updateStatusBadge(false);
-                console.log("Gagal Terhubung: " + err.errorMessage);
+                console.log("Gagal Terhubung ke EMQX: " + err.errorMessage);
                 console.log("Mencoba menghubungkan kembali dalam 3 detik...");
-                setTimeout(sambungkanMQTT, 3000); // Sistem Reconnect Otomatis Tanpa Reload Halaman
+                setTimeout(sambungkanMQTT, 3000);
             }
         };
         mqtt.connect(opsiKoneksi);
