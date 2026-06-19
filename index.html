@@ -26,7 +26,6 @@
             margin: 0;
         }
 
-        /* SCREEN LOGIN GATEWAY */
         #login-screen {
             display: flex;
             align-items: center;
@@ -44,7 +43,6 @@
             text-align: center;
         }
 
-        /* MAIN APP STYLING */
         #main-app {
             display: none;
         }
@@ -109,7 +107,6 @@
             margin: 0 auto;
         }
 
-        /* GAMEPAD */
         .gamepad-container {
             position: relative;
             width: 260px;
@@ -172,7 +169,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* RESPONSIVE LAYAR HP */
         @media (max-width: 767.98px) {
             .app-container { grid-template-columns: 1fr; }
             .mobile-top-bar { display: flex; }
@@ -306,7 +302,6 @@
 </div>
 
 <script>
-    // FORMULA ANTI-GAGAL: MENGGUNAKAN HOST BERSIH DAN STRUKTUR AMAN PAHO
     const broker = "broker.hivemq.com";
     const port = 443; 
     let deviceId = ""; 
@@ -316,8 +311,8 @@
     let topic_sistem = "";
 
     const clientId = "web_yusuf_" + Math.floor(Math.random() * 100000);
-    // Mengosongkan path jika "/mqtt" mengalami error handshake pada jaringanmu
-    const mqtt = new Paho.MQTT.Client(broker, port, "/mqtt", clientId);
+    // Mengunci endpoint WebSocket aman ke HiveMQ Cloud di port SSL 443
+    const mqtt = new Paho.MQTT.Client(broker, Number(port), "/mqtt", clientId);
 
     function prosesLogin() {
         const inputVal = document.getElementById("input-device-id").value.trim().toLowerCase();
@@ -342,9 +337,11 @@
 
     function sambungkanMQTT() {
         const opsiKoneksi = {
-            useSSL: true,          // Mengunci SSL aktif untuk Vercel
-            timeout: 10,           // Memberikan waktu handshake lebih longgar
-            keepAliveInterval: 30,
+            useSSL: true,              // Wajib TRUE agar diijinkan berjalan oleh browser di hosting HTTPS (Vercel)
+            timeout: 5,           
+            keepAliveInterval: 60,
+            cleanSession: true,
+            mqttVersion: 4,            // Mengunci versi MQTT 3.1.1 untuk kompatibilitas WebSockets HiveMQ
             onSuccess: () => {
                 updateStatusBadge(true);
                 mqtt.subscribe(topic_sampah); 
@@ -353,12 +350,8 @@
             onFailure: (err) => {
                 updateStatusBadge(false);
                 console.log("Gagal Terhubung: " + err.errorMessage);
-                
-                // JIKA /mqtt GAGAL, KITA PAKSA STRUKTUR JALUR BERSIH TANPA PATH (AUTO-FALLBACK)
-                console.log("Mencoba jalur alternatif berekstensi bersih...");
-                setTimeout(() => {
-                     location.reload();
-                }, 5000);
+                console.log("Mencoba menghubungkan kembali dalam 3 detik...");
+                setTimeout(sambungkanMQTT, 3000); // Sistem Reconnect Otomatis Tanpa Reload Halaman
             }
         };
         mqtt.connect(opsiKoneksi);
@@ -394,7 +387,11 @@
         }
     }
 
-    mqtt.onConnectionLost = (responseObject) => { updateStatusBadge(false); };
+    mqtt.onConnectionLost = (responseObject) => { 
+        updateStatusBadge(false); 
+        console.log("Koneksi terputus, mencoba menyambungkan ulang...");
+        setTimeout(sambungkanMQTT, 3000);
+    };
 
     mqtt.onMessageArrived = (message) => {
         if(message.destinationName === topic_sampah) { 
