@@ -268,7 +268,7 @@
     let topic_mobil = "";
     let topic_sampah = "";
     let topic_sistem = "";
-    let touchInterval = null; // Variabel penampung timer loop otomatis
+    let touchInterval = null; // Pengunci perulangan otomatis
 
     function prosesLogin() {
         const inputVal = document.getElementById("input-device-id").value.trim().toLowerCase();
@@ -372,23 +372,22 @@
         client.publish(topic_mobil, perintah);
     }
 
-    // FIX UTAMA: Mengaktifkan bom data berkala tiap 300ms agar failsafe 800ms ESP32 tidak memotong gerakan mobil
+    // FIXED: Looping pengiriman data dikunci pada 300ms agar klop dengan program ESP32 kamu
     function kirimTouch(e, perintah) {
         if (e.cancelable) {
             e.preventDefault(); 
         }
 
         if (perintah !== "diam") {
-            clearInterval(touchInterval); // Hapus sisa loop lama
-            kirimKontrol(perintah);       // Kirim perintah instan pertama
+            clearInterval(touchInterval); 
+            kirimKontrol(perintah);       
 
-            // Jalankan looping pengiriman terus menerus selama ditahan
             touchInterval = setInterval(() => {
                 kirimKontrol(perintah);
-            }, 300); 
+            }, 300); // 300 Milidetik
         } else {
-            clearInterval(touchInterval); // Stop looping saat jari diangkat
-            kirimKontrol("diam");         // Rem/Hentikan mobil
+            clearInterval(touchInterval); 
+            kirimKontrol("diam");         
         }
     }
 
