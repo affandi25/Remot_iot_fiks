@@ -85,7 +85,6 @@
             border: 8px solid #ffffff; margin: 20px auto; display: flex; align-items: center; justify-content: center;
         }
 
-        /* PERBAIKAN CSS: Anti-salin teks / seleksi teks pada tombol */
         .dpad-btn {
             position: absolute; background: #ffffff; border: 1px solid rgba(2, 132, 199, 0.1);
             color: var(--primary-blue); font-size: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);
@@ -270,6 +269,10 @@
     let topic_sampah = "";
     let topic_sistem = "";
 
+    // Variabel pendukung transmisi berulang saat tombol ditahan
+    let intervalKontrol = null;
+    let perintahAktif = "diam";
+
     function prosesLogin() {
         const inputVal = document.getElementById("input-device-id").value.trim().toLowerCase();
         if(inputVal === "") { alert("Harap masukkan ID Unik Perangkat!"); return; }
@@ -367,12 +370,33 @@
         element.style.background = `conic-gradient(${color} ${percentage * 3.6}deg, #cbd5e1 0deg)`;
     }
 
+    // Manajemen pengiriman data terus menerus selama tombol ditekan
     function kirimKontrol(perintah) {
         if (!client || !client.connected) return;
-        client.publish(topic_mobil, perintah);
+
+        if (perintah !== "diam") {
+            perintahAktif = perintah;
+            // Kirim langsung perintah pertama kali
+            client.publish(topic_mobil, perintah); 
+
+            // Hapus interval lama jika ada, lalu buat yang baru (kirim tiap 300ms)
+            if (intervalKontrol) clearInterval(intervalKontrol);
+            intervalKontrol = setInterval(() => {
+                if (client && client.connected) {
+                    client.publish(topic_mobil, perintahAktif);
+                }
+            }, 300);
+        } else {
+            // Ketika tombol dilepas (diam)
+            if (intervalKontrol) {
+                clearInterval(intervalKontrol);
+                intervalKontrol = null;
+            }
+            perintahAktif = "diam";
+            client.publish(topic_mobil, "diam");
+        }
     }
 
-    /* PERBAIKAN JS: Fungsi perantara khusus HP untuk mematikan instruksi default seleksi teks browser */
     function kirimTouch(e, perintah) {
         if (e.cancelable) {
             e.preventDefault(); 
