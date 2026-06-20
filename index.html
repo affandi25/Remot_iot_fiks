@@ -79,6 +79,16 @@
             box-shadow: 0 10px 30px rgba(148, 163, 184, 0.12); max-width: 500px; margin: 0 auto;
         }
 
+        /* ANTI SALIN & BLOKIR TEKS PADA HALAMAN MOBIL */
+        #menu-mobil {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
         .gamepad-container {
             position: relative; width: 260px; height: 260px; background: #e2e8f0;
             border-radius: 50%; box-shadow: inset 0 8px 15px rgba(0,0,0,0.06), 0 10px 25px rgba(148, 163, 184, 0.3);
@@ -269,7 +279,6 @@
     let topic_sampah = "";
     let topic_sistem = "";
 
-    // Variabel pendukung transmisi berulang saat tombol ditahan
     let intervalKontrol = null;
     let perintahAktif = "diam";
 
@@ -370,16 +379,13 @@
         element.style.background = `conic-gradient(${color} ${percentage * 3.6}deg, #cbd5e1 0deg)`;
     }
 
-    // Manajemen pengiriman data terus menerus selama tombol ditekan
     function kirimKontrol(perintah) {
         if (!client || !client.connected) return;
 
         if (perintah !== "diam") {
             perintahAktif = perintah;
-            // Kirim langsung perintah pertama kali
             client.publish(topic_mobil, perintah); 
 
-            // Hapus interval lama jika ada, lalu buat yang baru (kirim tiap 300ms)
             if (intervalKontrol) clearInterval(intervalKontrol);
             intervalKontrol = setInterval(() => {
                 if (client && client.connected) {
@@ -387,7 +393,6 @@
                 }
             }, 300);
         } else {
-            // Ketika tombol dilepas (diam)
             if (intervalKontrol) {
                 clearInterval(intervalKontrol);
                 intervalKontrol = null;
