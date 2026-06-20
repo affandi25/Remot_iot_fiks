@@ -79,7 +79,7 @@
             box-shadow: 0 10px 30px rgba(148, 163, 184, 0.12); max-width: 500px; margin: 0 auto;
         }
 
-        /* ANTI SALIN & BLOKIR TEKS PADA HALAMAN MOBIL */
+        /* PERBAIKAN LOCK ANTI-SALIN TEKS HALAMAN MOBIL */
         #menu-mobil {
             -webkit-touch-callout: none;
             -webkit-user-select: none;
@@ -281,6 +281,9 @@
 
     let intervalKontrol = null;
     let perintahAktif = "diam";
+    
+    // Flag penanda agar sistem tahu putus karena kesalahan atau karena didepak orang lain
+    let sengajaDisconnect = false; 
 
     function prosesLogin() {
         const inputVal = document.getElementById("input-device-id").value.trim().toLowerCase();
@@ -295,16 +298,19 @@
         document.getElementById("login-screen").style.display = "none";
         document.getElementById("main-app").style.display = "block";
 
+        sengajaDisconnect = false;
         sambungkanMQTT();
     }
 
     function sambungkanMQTT() {
         const url_broker = "wss://broker.emqx.io:8084/mqtt";
         const options = {
-            clientId: "web_yusuf_" + Math.floor(Math.random() * 100000),
+            // PROTEKSI MAKSIMAL: clientId dipasang konstan berbasis deviceId tanpa randomizer math
+            // Efeknya: Jika ada orang lain login pakai ID ini, koneksi kita otomatis diputus (ditendang)
+            clientId: "eksklusif_yusuf_" + deviceId,
             clean: true,
             connectTimeout: 4000,
-            reconnectPeriod: 3000
+            reconnectPeriod: 0 // Kita matikan auto-reconnect bawaan library agar tidak bentrok dengan logika kick-out
         };
 
         console.log("Mencoba menyambung ke broker via MQTT.js...");
@@ -321,7 +327,9 @@
             console.log("Koneksi gagal: ", err);
         });
 
-        client.on('close', () => { updateStatusBadge(false); });
+        client.on('close', () => { 
+            updateStatusBadge(false); 
+        });
 
         client.on('message', (topic, message) => {
             if(topic === topic_sampah) { 
@@ -372,6 +380,27 @@
         } else {
             badgeDesktop.innerHTML = htmlOffline; badgeDesktop.className = "badge bg-danger status-badge";
             badgeMobile.innerHTML = htmlOffline; badgeMobile.className = "badge bg-danger status-badge";
+            
+            // JIKA STATUS DISCONNECT TERJADI BUKAN KARENA LOGOUT MANUAL
+            if (!sengajaDisconnect) {
+                sengajaDisconnect = true; 
+                
+                // Matikan kiriman interval remot jika sedang berjalan
+                if (intervalKontrol) { clearInterval(intervalKontrol); intervalKontrol = null; }
+
+                // 1. Matikan object koneksi agar bersih
+                if(client) { client.end(); }
+
+                // 2. Berikan Alert Pop-up Pemberitahuan Kebajak
+                alert("Koneksi Terputus! ID Alat sedang digunakan/ditendang oleh perangkat lain.");
+                
+                // 3. Kick Balik Layar Secara Otomatis ke Login Screen
+                document.getElementById("main-app").style.display = "none";
+                document.getElementById("login-screen").style.display = "flex";
+                
+                // 4. Kosongkan kembali form input agar bisa login ulang
+                document.getElementById("input-device-id").value = "";
+            }
         }
     }
 
