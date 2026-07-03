@@ -415,6 +415,11 @@
             perintahAktif = perintah;
             client.publish(topic_mobil, perintah); 
 
+            // EFEK GETAR: Getar pendek (50ms) setiap kali tombol mulai ditekan lewat klik mouse
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
+            }
+
             if (intervalKontrol) clearInterval(intervalKontrol);
             intervalKontrol = setInterval(() => {
                 if (client && client.connected) {
@@ -435,6 +440,12 @@
         if (e.cancelable) {
             e.preventDefault(); 
         }
+        
+        // EFEK GETAR LAYAR SENTUH: Memberikan getaran instan 50ms di HP Android saat menyentuh tombol arah
+        if (navigator.vibrate && perintah !== "diam") {
+            navigator.vibrate(50);
+        }
+        
         kirimKontrol(perintah);
     }
 
