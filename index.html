@@ -288,16 +288,14 @@
 
     let intervalKontrol = null;
     let perintahAktif = "diam";
-    
-    // Status koneksi internal
-    let isConnected = false;
 
-    // KETIKA HALAMAN DIBUKA: Cek apakah ada session ID alat yang tersimpan sebelumnya
+    // KETIKA HALAMAN DIBUKA: Langsung restore halaman utama jika ada ID tersimpan
     window.onload = function() {
         const savedId = localStorage.getItem("yusuf_iot_device_id");
         if(savedId) {
-            document.getElementById("input-device-id").value = savedId;
-            prosesLogin();
+            deviceId = savedId;
+            setupUIAndTopics();
+            sambungkanMQTT();
         }
     }
 
@@ -306,10 +304,13 @@
         if(inputVal === "") { alert("Harap masukkan ID Unik Perangkat!"); return; }
         
         deviceId = inputVal; 
-        
-        // Simpan ID ke penyimpanan lokal HP agar tidak hilang saat sleep/pindah tab
         localStorage.setItem("yusuf_iot_device_id", deviceId);
+        
+        setupUIAndTopics();
+        sambungkanMQTT();
+    }
 
+    function setupUIAndTopics() {
         topic_mobil  = "yusuf/projek/" + deviceId + "/mobil";
         topic_sampah = "yusuf/projek/" + deviceId + "/sampah";
         topic_sistem = "yusuf/projek/" + deviceId + "/sistem_aktif";
@@ -317,12 +318,9 @@
         document.querySelectorAll(".badge-id-teks").forEach(el => el.innerText = deviceId.toUpperCase());
         document.getElementById("login-screen").style.display = "none";
         document.getElementById("main-app").style.display = "block";
-
-        sambungkanMQTT();
     }
 
     function sambungkanMQTT() {
-        // Matikan client lama jika masih berjalan
         if(client) { try { client.end(); } catch(e){} }
 
         const url_broker = "wss://broker.emqx.io:8084/mqtt";
@@ -330,26 +328,19 @@
             clientId: "eksklusif_yusuf_" + deviceId,
             clean: true,
             connectTimeout: 4000,
-            // Mengaktifkan auto-reconnect halus jika putus karena sinyal drop/mode sleep HP
-            reconnectPeriod: 2000 
+            reconnectPeriod: 2000 // Otomatis connect ulang jika putus karena sinyal/sleep
         };
 
         console.log("Mencoba menyambung ke broker via MQTT.js...");
         client = mqtt.connect(url_broker, options);
 
         client.on('connect', () => {
-            isConnected = true;
             updateStatusBadge(true);
             client.subscribe(topic_sampah);
             console.log("Koneksi Sukses Terhubung.");
         });
 
-        client.on('error', (err) => {
-            console.log("Koneksi gagal: ", err);
-        });
-
         client.on('close', () => { 
-            // Jika terputus biasa (bukan didepak/ditendang), biarkan dia berstatus "Terputus" sementara tanpa menendang ke login
             updateStatusBadge(false); 
         });
 
@@ -375,36 +366,12 @@
                 circleGradient(lingkaran, warnaGrafik, persen);
             }
         });
-
-        // DETEKSI LOGIKA DIBAJAK (KICK OUT):
-        // Jika status kita sebelumnya CONNECTED, lalu tiba-tiba ada client baru masuk memakai clientId kita,
-        // Broker EMQX secara default akan mengirimkan pemutusan sepihak. Kita tangani di sini.
-        client.on('offline', () => {
-            if(isConnected) {
-                // Beri jeda sebentar untuk membedakan antara sinyal drop biasa vs ditendang user lain
-                setTimeout(() => {
-                    if(!client.connected) {
-                        // Jika dalam 3 detik gagal total connect ulang, kemungkinan besar di-kick user lain
-                        executeKickOut();
-                    }
-                }, 3000);
-            }
-        });
-    }
-
-    function executeKickOut() {
-        isConnected = false;
-        if (intervalKontrol) { clearInterval(intervalKontrol); intervalKontrol = null; }
-        if(client) { client.end(); }
-
-        alert("Koneksi Terputus Semesta! ID Alat sedang digunakan/ditendang oleh perangkat lain.");
-        logoutManual();
     }
 
     function logoutManual() {
-        isConnected = false;
-        // Hapus ingatan session ID di local storage HP
+        // Hanya hapus localStorage jika user MENEKAN TOMBOL LOGOUT secara sengaja
         localStorage.removeItem("yusuf_iot_device_id");
+        deviceId = "";
         
         if (intervalKontrol) { clearInterval(intervalKontrol); intervalKontrol = null; }
         if(client) { client.end(); client = null; }
@@ -414,6 +381,10 @@
         document.getElementById("login-screen").style.display = "flex";
         document.getElementById("input-device-id").value = "";
     }
+
+    // MEMATIKAN FUNGSI KICK OUT AGAR TIDAK LOGOUT SAAT SLEEP LAMA
+    // Jika koneksi benar-benar ditendang orang lain, sistem cukup berstatus "Terputus" 
+    // dan akan otomatis mencoba masuk lagi berkat penyimpanan localStorage di atas.
 
     function updateStatusBadge(isOnline) {
         const badgeDesktop = document.getElementById("status-koneksi");
@@ -473,20 +444,18 @@
     }
 
     function kirimTouch(e, perintah) {
-        if (e.cancelable) {
-            e.preventDefault(); 
-        }
-        if (navigator.vibrate && perintah !== "diam") {
-            navigator.vibrate(50);
-        }
+        if (e.cancelable) { e.preventDefault(); }
+        if (navigator.vibrate && perintah !== "diam") { navigator.vibrate(50); }
         kirimKontrol(perintah);
     }
 
+    // KETIKA HP DIBANGUNKAN DARI SLEEP: Cek status koneksi dan sambungkan ulang secara halus jika mati
     document.addEventListener("visibilitychange", () => {
-        // Logika ketika user balik lagi membuka Chrome setelah keluar sebentar
-        if (document.visibilityState === "visible" && deviceId && client && !client.connected) {
-             console.log("Kembali aktif, menyambungkan ulang jaringan MQTT...");
-             sambungkanMQTT();
+        if (document.visibilityState === "visible" && deviceId) {
+             console.log("HP terbangun dari sleep, memeriksa status jaringan...");
+             if(!client || !client.connected) {
+                 sambungkanMQTT();
+             }
         }
     });
 
