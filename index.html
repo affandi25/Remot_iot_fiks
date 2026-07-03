@@ -79,7 +79,6 @@
             box-shadow: 0 10px 30px rgba(148, 163, 184, 0.12); max-width: 500px; margin: 0 auto;
         }
 
-        /* PERBAIKAN LOCK ANTI-SALIN TEKS HALAMAN MOBIL */
         #menu-mobil {
             -webkit-touch-callout: none;
             -webkit-user-select: none;
@@ -107,6 +106,7 @@
             -moz-user-select: none;
             -ms-user-select: none;
             user-select: none;
+            touch-action: manipulation; 
         }
 
         .dpad-up { top: 12px; width: 75px; height: 65px; border-radius: 14px 14px 0 0; padding-bottom: 5px; }
@@ -122,6 +122,7 @@
             -webkit-touch-callout: none;
             -webkit-user-select: none;
             user-select: none;
+            touch-action: manipulation;
         }
 
         .dpad-btn:hover { background: var(--primary-light); }
@@ -187,14 +188,20 @@
 
 <div id="main-app">
     <div class="mobile-top-bar">
-        <h6 class="fw-bold text-primary m-0"><i class="fa-solid fa-robot me-2"></i>ID: <span class="badge-id-teks"></span></h6>
+        <div class="d-flex align-items-center">
+            <h6 class="fw-bold text-primary m-0 me-2"><i class="fa-solid fa-robot me-2"></i>ID: <span class="badge-id-teks"></span></h6>
+            <button onclick="logoutManual()" class="btn btn-sm btn-outline-danger py-0 px-2 rounded-2" style="font-size: 11px;">Logout</button>
+        </div>
         <span id="status-koneksi-mobile" class="badge bg-danger status-badge"><i class="fa-solid fa-circle-nodes me-2"></i>Terputus</span>
     </div>
 
     <div class="app-container">
         <div class="sidebar">
             <div class="text-center mb-4 pb-3 border-bottom w-100">
-                <h5 class="fw-bold text-primary m-0"><i class="fa-solid fa-robot me-2"></i>ID: <span class="badge-id-teks"></span></h5>
+                <h5 class="fw-bold text-primary mb-2"><i class="fa-solid fa-robot me-2"></i>ID: <span class="badge-id-teks"></span></h5>
+                <button onclick="logoutManual()" class="btn btn-sm btn-outline-danger w-100 rounded-3 fw-semibold" style="font-size: 13px;">
+                    <i class="fa-solid fa-right-from-bracket me-1"></i>Logout Alat
+                </button>
             </div>
             <nav class="nav flex-row flex-md-column w-100">
                 <div class="nav-link-custom active" onclick="bukaMenu('menu-utama', this)"><i class="fa-solid fa-sliders"></i><span>Sistem</span></div>
@@ -282,14 +289,27 @@
     let intervalKontrol = null;
     let perintahAktif = "diam";
     
-    // Flag penanda agar sistem tahu putus karena kesalahan atau karena didepak orang lain
-    let sengajaDisconnect = false; 
+    // Status koneksi internal
+    let isConnected = false;
+
+    // KETIKA HALAMAN DIBUKA: Cek apakah ada session ID alat yang tersimpan sebelumnya
+    window.onload = function() {
+        const savedId = localStorage.getItem("yusuf_iot_device_id");
+        if(savedId) {
+            document.getElementById("input-device-id").value = savedId;
+            prosesLogin();
+        }
+    }
 
     function prosesLogin() {
         const inputVal = document.getElementById("input-device-id").value.trim().toLowerCase();
         if(inputVal === "") { alert("Harap masukkan ID Unik Perangkat!"); return; }
         
         deviceId = inputVal; 
+        
+        // Simpan ID ke penyimpanan lokal HP agar tidak hilang saat sleep/pindah tab
+        localStorage.setItem("yusuf_iot_device_id", deviceId);
+
         topic_mobil  = "yusuf/projek/" + deviceId + "/mobil";
         topic_sampah = "yusuf/projek/" + deviceId + "/sampah";
         topic_sistem = "yusuf/projek/" + deviceId + "/sistem_aktif";
@@ -298,36 +318,38 @@
         document.getElementById("login-screen").style.display = "none";
         document.getElementById("main-app").style.display = "block";
 
-        sengajaDisconnect = false;
         sambungkanMQTT();
     }
 
     function sambungkanMQTT() {
+        // Matikan client lama jika masih berjalan
+        if(client) { try { client.end(); } catch(e){} }
+
         const url_broker = "wss://broker.emqx.io:8084/mqtt";
         const options = {
-            // PROTEKSI MAKSIMAL: clientId dipasang konstan berbasis deviceId tanpa randomizer math
-            // Efeknya: Jika ada orang lain login pakai ID ini, koneksi kita otomatis diputus (ditendang)
             clientId: "eksklusif_yusuf_" + deviceId,
             clean: true,
             connectTimeout: 4000,
-            reconnectPeriod: 0 // Kita matikan auto-reconnect bawaan library agar tidak bentrok dengan logika kick-out
+            // Mengaktifkan auto-reconnect halus jika putus karena sinyal drop/mode sleep HP
+            reconnectPeriod: 2000 
         };
 
         console.log("Mencoba menyambung ke broker via MQTT.js...");
         client = mqtt.connect(url_broker, options);
 
         client.on('connect', () => {
+            isConnected = true;
             updateStatusBadge(true);
             client.subscribe(topic_sampah);
             console.log("Koneksi Sukses Terhubung.");
         });
 
         client.on('error', (err) => {
-            updateStatusBadge(false);
             console.log("Koneksi gagal: ", err);
         });
 
         client.on('close', () => { 
+            // Jika terputus biasa (bukan didepak/ditendang), biarkan dia berstatus "Terputus" sementara tanpa menendang ke login
             updateStatusBadge(false); 
         });
 
@@ -353,6 +375,59 @@
                 circleGradient(lingkaran, warnaGrafik, persen);
             }
         });
+
+        // DETEKSI LOGIKA DIBAJAK (KICK OUT):
+        // Jika status kita sebelumnya CONNECTED, lalu tiba-tiba ada client baru masuk memakai clientId kita,
+        // Broker EMQX secara default akan mengirimkan pemutusan sepihak. Kita tangani di sini.
+        client.on('offline', () => {
+            if(isConnected) {
+                // Beri jeda sebentar untuk membedakan antara sinyal drop biasa vs ditendang user lain
+                setTimeout(() => {
+                    if(!client.connected) {
+                        // Jika dalam 3 detik gagal total connect ulang, kemungkinan besar di-kick user lain
+                        executeKickOut();
+                    }
+                }, 3000);
+            }
+        });
+    }
+
+    function executeKickOut() {
+        isConnected = false;
+        if (intervalKontrol) { clearInterval(intervalKontrol); intervalKontrol = null; }
+        if(client) { client.end(); }
+
+        alert("Koneksi Terputus Semesta! ID Alat sedang digunakan/ditendang oleh perangkat lain.");
+        logoutManual();
+    }
+
+    function logoutManual() {
+        isConnected = false;
+        // Hapus ingatan session ID di local storage HP
+        localStorage.removeItem("yusuf_iot_device_id");
+        
+        if (intervalKontrol) { clearInterval(intervalKontrol); intervalKontrol = null; }
+        if(client) { client.end(); client = null; }
+
+        updateStatusBadge(false);
+        document.getElementById("main-app").style.display = "none";
+        document.getElementById("login-screen").style.display = "flex";
+        document.getElementById("input-device-id").value = "";
+    }
+
+    function updateStatusBadge(isOnline) {
+        const badgeDesktop = document.getElementById("status-koneksi");
+        const badgeMobile = document.getElementById("status-koneksi-mobile");
+        const htmlOnline = '<i class="fa-solid fa-circle-check me-2"></i>Online';
+        const htmlOffline = '<i class="fa-solid fa-circle-nodes me-2"></i>Terputus';
+        
+        if(isOnline) {
+            badgeDesktop.innerHTML = htmlOnline; badgeDesktop.className = "badge bg-success status-badge";
+            badgeMobile.innerHTML = htmlOnline; badgeMobile.className = "badge bg-success status-badge";
+        } else {
+            badgeDesktop.innerHTML = htmlOffline; badgeDesktop.className = "badge bg-danger status-badge";
+            badgeMobile.innerHTML = htmlOffline; badgeMobile.className = "badge bg-danger status-badge";
+        }
     }
 
     function bukaMenu(idMenu, elemenNav) {
@@ -368,42 +443,6 @@
         document.getElementById('judul-menu-mobile').innerText = judul;
     }
 
-    function updateStatusBadge(isOnline) {
-        const badgeDesktop = document.getElementById("status-koneksi");
-        const badgeMobile = document.getElementById("status-koneksi-mobile");
-        const htmlOnline = '<i class="fa-solid fa-circle-check me-2"></i>Online';
-        const htmlOffline = '<i class="fa-solid fa-circle-nodes me-2"></i>Terputus';
-        
-        if(isOnline) {
-            badgeDesktop.innerHTML = htmlOnline; badgeDesktop.className = "badge bg-success status-badge";
-            badgeMobile.innerHTML = htmlOnline; badgeMobile.className = "badge bg-success status-badge";
-        } else {
-            badgeDesktop.innerHTML = htmlOffline; badgeDesktop.className = "badge bg-danger status-badge";
-            badgeMobile.innerHTML = htmlOffline; badgeMobile.className = "badge bg-danger status-badge";
-            
-            // JIKA STATUS DISCONNECT TERJADI BUKAN KARENA LOGOUT MANUAL
-            if (!sengajaDisconnect) {
-                sengajaDisconnect = true; 
-                
-                // Matikan kiriman interval remot jika sedang berjalan
-                if (intervalKontrol) { clearInterval(intervalKontrol); intervalKontrol = null; }
-
-                // 1. Matikan object koneksi agar bersih
-                if(client) { client.end(); }
-
-                // 2. Berikan Alert Pop-up Pemberitahuan Kebajak
-                alert("Koneksi Terputus! ID Alat sedang digunakan/ditendang oleh perangkat lain.");
-                
-                // 3. Kick Balik Layar Secara Otomatis ke Login Screen
-                document.getElementById("main-app").style.display = "none";
-                document.getElementById("login-screen").style.display = "flex";
-                
-                // 4. Kosongkan kembali form input agar bisa login ulang
-                document.getElementById("input-device-id").value = "";
-            }
-        }
-    }
-
     function circleGradient(element, color, percentage) {
         element.style.background = `conic-gradient(${color} ${percentage * 3.6}deg, #cbd5e1 0deg)`;
     }
@@ -415,10 +454,7 @@
             perintahAktif = perintah;
             client.publish(topic_mobil, perintah); 
 
-            // EFEK GETAR: Getar pendek (50ms) setiap kali tombol mulai ditekan lewat klik mouse
-            if (navigator.vibrate) {
-                navigator.vibrate(50);
-            }
+            if (navigator.vibrate) { navigator.vibrate(50); }
 
             if (intervalKontrol) clearInterval(intervalKontrol);
             intervalKontrol = setInterval(() => {
@@ -440,14 +476,19 @@
         if (e.cancelable) {
             e.preventDefault(); 
         }
-        
-        // EFEK GETAR LAYAR SENTUH: Memberikan getaran instan 50ms di HP Android saat menyentuh tombol arah
         if (navigator.vibrate && perintah !== "diam") {
             navigator.vibrate(50);
         }
-        
         kirimKontrol(perintah);
     }
+
+    document.addEventListener("visibilitychange", () => {
+        // Logika ketika user balik lagi membuka Chrome setelah keluar sebentar
+        if (document.visibilityState === "visible" && deviceId && client && !client.connected) {
+             console.log("Kembali aktif, menyambungkan ulang jaringan MQTT...");
+             sambungkanMQTT();
+        }
+    });
 
     function toggleSistem(checkbox) {
         if (!client || !client.connected) return;
